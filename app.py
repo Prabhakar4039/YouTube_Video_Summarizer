@@ -51,8 +51,10 @@ if url:
                         st.session_state['summary'] = summary
                 
                 except Exception as e:
-                    # Clean error message for the user
-                    st.error(f"Error: {str(e)}")
+                    # Clear summary to avoid stale data 
+                    if 'summary' in st.session_state: del st.session_state['summary']
+                    # Show warning for no captions
+                    st.warning(f"⚠️ {str(e)}")
         
         # Display results from session state
         if 'transcript' in st.session_state:
