@@ -30,14 +30,12 @@ def transcribe_with_whisper(url: str) -> str:
     with tempfile.TemporaryDirectory() as tmp_dir:
         # Stealth yt-dlp configuration to bypass 403 Forbidden
         ydl_opts = {
-            'format': 'm4a/bestaudio/best',
+            'format': 'bestaudio/best',
             'outtmpl': os.path.join(tmp_dir, 'audio.%(ext)s'),
             'max_filesize': 25 * 1024 * 1024, # 25MB limit for Groq
             'quiet': True,
             'no_warnings': True,
             'nocheckcertificate': True,
-            # Bypasses bot detection by pretending to be an iOS device
-            'extractor_args': {'youtube': {'player_client': ['ios']}},
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'm4a',
