@@ -1,68 +1,103 @@
 from youtube_transcript_api import YouTubeTranscriptApi
 import re
+import os
+import yt_dlp
+import tempfile
+from groq import Groq
+from dotenv import load_dotenv
+
+# Load env
+load_dotenv()
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 def extract_video_id(url: str) -> str:
-    """
-    Extract the 11-character video ID from a YouTube URL.
-    Handles standard URLs, shorts, embeds, and URLs with parameters like playlists.
-    """
-    # 1. First, check for common patterns and take exactly 11 chars
-    patterns = [
-        r'(?:v=|\/|embed\/|shorts\/|watch\?v=)([0-9A-Za-z_-]{11})',
-    ]
+    """Extract the 11-character video ID from a YouTube URL."""
+    patterns = [r'(?:v=|\/|embed\/|shorts\/|watch\?v=)([0-9A-Za-z_-]{11})']
     for p in patterns:
         match = re.search(p, url)
-        if match: 
-            return match.group(1)
-            
-    # 2. If nothing matched, but we have an 11-char string, try it
+        if match: return match.group(1)
     if len(url) == 11 and re.match(r'^[0-9A-Za-z_-]{11}$', url):
         return url
-        
     return None
 
-def get_transcript(video_id: str, max_words: int = 4000) -> str:
-    """
-    Fetch transcript from YouTube captions with multi-stage fallback.
-    1. Try preferred English transcript.
-    2. Try list of all transcripts (manual -> auto-generated).
-    """
+def transcribe_with_whisper(url: str) -> str:
+    """Download audio using stealth yt-dlp and transcribe using Groq's Whisper API."""
+    print(f"DEBUG: Falling back to Smart Whisper for {url}")
+    
+    if not os.getenv("GROQ_API_KEY"):
+        raise ValueError("Groq API Key missing for AI transcription fallback.")
+    
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        # Stealth yt-dlp configuration to bypass 403 Forbidden
+        ydl_opts = {
+            'format': 'm4a/bestaudio/best',
+            'outtmpl': os.path.join(tmp_dir, 'audio.%(ext)s'),
+            'max_filesize': 25 * 1024 * 1024, # 25MB limit for Groq
+            'quiet': True,
+            'no_warnings': True,
+            'nocheckcertificate': True,
+            # Bypasses bot detection by pretending to be an iOS device
+            'extractor_args': {'youtube': {'player_client': ['ios']}},
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'm4a',
+            }],
+        }
+        
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                audio_path = ydl.prepare_filename(info)
+                
+                # Check if the extension changed after postprocessing
+                if not os.path.exists(audio_path):
+                    audio_path = os.path.join(tmp_dir, 'audio.m4a')
+                
+                # Transcribe via Groq
+                with open(audio_path, "rb") as file:
+                    transcription = client.audio.transcriptions.create(
+                        file=(os.path.basename(audio_path), file.read()),
+                        model="whisper-large-v3-turbo",
+                        response_format="text",
+                        language="en"
+                    )
+                    return transcription
+                    
+        except Exception as e:
+            print(f"DEBUG: Smart Whisper Failed: {str(e)}")
+            raise Exception(f"AI Transcription Failed (YouTube Blocked Download). Status: {str(e)}")
+
+def get_transcript(video_id: str, url: str = None, max_words: int = 4000) -> str:
+    """Fetch transcript with multi-stage fallback: manual -> auto -> Smart Whisper."""
     print(f"DEBUG: Processing Video ID: {video_id}")
     
     try:
-        # Strategy 1: Direct fetch for English (fastest)
+        # 1. Standard API attempt
         transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
         
-    except Exception as e:
-        print(f"DEBUG: Initial fetch failed. Trying list_transcripts fallback. Error: {str(e)}")
-        
+    except Exception:
         try:
-            # Strategy 2: List transcripts and pick manual then generated
+            # 2. Advanced API attempt (list transcripts)
             transcript_list_obj = YouTubeTranscriptApi.list_transcripts(video_id)
-            
-            # Prefer manual English
             try:
                 transcript_obj = transcript_list_obj.find_manually_created_transcript(['en'])
-                print("DEBUG: Found manually created English transcript.")
             except:
-                # Fallback to generated English
                 try:
                     transcript_obj = transcript_list_obj.find_generated_transcript(['en'])
-                    print("DEBUG: Found auto-generated English transcript.")
                 except:
-                    # Final fallback: Look for ANY transcript and translate it or just pick first
-                    # We'll just pick the first available and try to fetch it
+                    # Final API fallback: get any and let's hope it works
                     transcript_obj = next(iter(transcript_list_obj))
-                    print(f"DEBUG: Found non-English/other transcript ({transcript_obj.language})")
             
             transcript_list = transcript_obj.fetch()
             
-        except Exception as final_error:
-            # Re-raise actual detailed message
-            print(f"DEBUG: Final Strategy failed for {video_id}: {str(final_error)}")
-            raise Exception(f"Failed to fetch transcript: {str(final_error)}")
+        except Exception as api_error:
+            # 3. Smart Whisper Fallback (if URL is provided)
+            if url:
+                return transcribe_with_whisper(url)
+            else:
+                raise Exception(f"Captions unavailable and no URL for fallback: {str(api_error)}")
 
-    # Combine text properly
+    # Combine text
     full_text = " ".join([item['text'] for item in transcript_list])
     
     # Word-count limit

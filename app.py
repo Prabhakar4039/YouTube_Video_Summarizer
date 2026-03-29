@@ -33,12 +33,13 @@ if url:
 
             with st.spinner("🔍 Fetching transcript..."):
                 try:
-                    # Cache transcript extraction
+                    # Cache transcript extraction (pass URL for fallback)
                     @st.cache_data
-                    def get_cached_transcript(vid):
-                        return get_transcript(vid)
+                    def get_cached_transcript(vid, u):
+                        return get_transcript(vid, u)
                     
-                    transcript = get_cached_transcript(video_id)
+                    # Try fastest method first
+                    transcript = get_cached_transcript(video_id, url)
                     st.session_state['transcript'] = transcript
                     
                     with st.spinner("🤖 Generating summary..."):
@@ -55,7 +56,7 @@ if url:
                     if 'summary' in st.session_state: del st.session_state['summary']
                     # Show detailed error message with an alert icon
                     st.error(f"❌ {str(e)}")
-                    st.info("💡 Tip: Some videos may have captions disabled or restricted by YouTube.")
+                    st.info("💡 Tip: Music videos or restricted content may be blocked even from AI transcription.")
         
         # Display results from session state
         if 'transcript' in st.session_state:
