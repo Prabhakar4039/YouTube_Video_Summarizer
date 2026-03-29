@@ -1,0 +1,15 @@
+.env
+.streamlit/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.venv
+pip-selfcheck.json
+tmp/
+.ipynb_checkpoints/
