@@ -53,8 +53,9 @@ if url:
                 except Exception as e:
                     # Clear summary to avoid stale data 
                     if 'summary' in st.session_state: del st.session_state['summary']
-                    # Show warning for no captions
-                    st.warning(f"⚠️ {str(e)}")
+                    # Show detailed error message with an alert icon
+                    st.error(f"❌ {str(e)}")
+                    st.info("💡 Tip: Some videos may have captions disabled or restricted by YouTube.")
         
         # Display results from session state
         if 'transcript' in st.session_state:
