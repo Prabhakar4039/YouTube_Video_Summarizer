@@ -27,16 +27,18 @@ if url:
     
     if video_id:
         if st.button("🚀 Process Video"):
+            # Clear previous results
+            if 'transcript' in st.session_state: del st.session_state['transcript']
+            if 'summary' in st.session_state: del st.session_state['summary']
+
             with st.spinner("🔍 Fetching transcript..."):
                 try:
-                    # Cache transcript extraction (pass URL for fallback)
+                    # Cache transcript extraction
                     @st.cache_data
-                    def get_cached_transcript(vid, u):
-                        return get_transcript(vid, u)
+                    def get_cached_transcript(vid):
+                        return get_transcript(vid)
                     
-                    # Notify user if API fails and fallback kicks in 
-                    # Note: get_transcript handles the fallback internally
-                    transcript = get_cached_transcript(video_id, url)
+                    transcript = get_cached_transcript(video_id)
                     st.session_state['transcript'] = transcript
                     
                     with st.spinner("🤖 Generating summary..."):
@@ -49,7 +51,8 @@ if url:
                         st.session_state['summary'] = summary
                 
                 except Exception as e:
-                    st.error(f"Error processing video: {e}")
+                    # Clean error message for the user
+                    st.error(f"Error: {str(e)}")
         
         # Display results from session state
         if 'transcript' in st.session_state:

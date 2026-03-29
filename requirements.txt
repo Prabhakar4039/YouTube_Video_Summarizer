@@ -2,4 +2,3 @@ streamlit
 groq
 youtube-transcript-api==0.6.3
 python-dotenv
-yt-dlp
